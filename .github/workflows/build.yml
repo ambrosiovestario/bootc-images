@@ -10,7 +10,7 @@ on:
       formats:
         description: 'Export formats (comma-separated)'
         required: true
-        default: 'bootc-installer'
+        default: 'bootc-generic-iso'
       installer_base:
         description: 'Default installer_base for bootc-generic-iso/bootc-installer when a directory has no .buildconfig (name of an image under _base_anaconda_images_/<name>/)'
         required: false
@@ -92,7 +92,7 @@ jobs:
             DEFAULT_INSTALLER_BASE="${{ github.event.inputs.installer_base }}"
           else
             PLATFORMS="linux/amd64,linux/arm64"
-            FORMATS="bootc-installer"
+            FORMATS="bootc-generic-iso"
             BASE_PATH="${{ vars.BASE_PATH || '' }}"
             IMAGE_PREFIX="${{ vars.IMAGE_PREFIX || 'bootc' }}"
             DEFAULT_INSTALLER_BASE="${{ vars.INSTALLER_BASE || 'anaconda-rhel10-base' }}"
@@ -537,7 +537,7 @@ jobs:
                   SHOULD_CREATE=true
                   # Use default format if none specified
                   if [ -z "$ARTIFACT_FORMATS" ]; then
-                    ARTIFACT_FORMATS="bootc-installer"
+                    ARTIFACT_FORMATS="bootc-generic-iso"
                   fi
                 else
                   echo "Artifacts already exist for $DIR, skipping auto-creation"
@@ -1044,6 +1044,36 @@ jobs:
             BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
           fi
 
+          # bootc-generic-iso builds the OS tree straight from the container
+          # image's own layers, so osbuild ends up initializing a *second*,
+          # nested overlay-driver containers-storage inside the tree it's
+          # assembling (at /run/osbuild/tree/var/lib/containers/storage). This
+          # step's own filesystem is already overlayfs (GitHub Actions
+          # "container:" jobs run on Docker's overlay2 driver), and the
+          # kernel refuses to stack a native overlay mount on top of another
+          # overlay mount:
+          #   'overlay' is not supported over overlayfs, a mount_program is required
+          # bootc-installer/anaconda-iso and the plain disk formats build
+          # their tree a different way and don't hit this, so it's scoped to
+          # bootc-generic-iso only. fuse-overlayfs is the userspace
+          # mount_program built for exactly this nested case; we hand it to
+          # the nested container's containers-storage config via a mounted
+          # storage.conf rather than trying to change the host's.
+          STORAGE_CONF_MOUNT=""
+          if [ "${{ matrix.format }}" = "bootc-generic-iso" ]; then
+            echo "Using fuse-overlayfs as the overlay mount_program for the nested bootc-generic-iso build (works around overlay-on-overlayfs)"
+            cat > /tmp/nested-storage.conf << 'EOF'
+          [storage]
+          driver = "overlay"
+          runroot = "/run/containers/storage"
+          graphroot = "/var/lib/containers/storage"
+
+          [storage.options.overlay]
+          mount_program = "/usr/bin/fuse-overlayfs"
+          EOF
+            STORAGE_CONF_MOUNT="-v /tmp/nested-storage.conf:/etc/containers/storage.conf:ro"
+          fi
+
           podman run \
             --rm \
             --privileged \
@@ -1052,6 +1082,7 @@ jobs:
             -v ${OUTPUT_DIR}:/output \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             ${CONFIG_MOUNT} \
+            ${STORAGE_CONF_MOUNT} \
             ghcr.io/osbuild/image-builder-cli:latest \
             build \
             "${BOOTC_ARGS[@]}" \
@@ -1136,9 +1167,49 @@ jobs:
           echo "Creating scratch image: $ARTIFACT_IMAGE_NAME:$ARTIFACT_IMAGE_TAG"
           echo "Using storage root: $STORAGE_ROOT"
 
+          # image-builder writes into a nested subdirectory of its own choosing
+          # (e.g. $OUTPUT_DIR/<distro>-<format>-<arch>/<file>), not directly into
+          # $OUTPUT_DIR. Flatten that into $OUTPUT_DIR itself and rename using our
+          # own convention: <image_name>-<format>.<ext> when there's a single
+          # output file, or <image_name>-<format>-<original filename> when
+          # image-builder produced more than one (e.g. a manifest/SBOM alongside
+          # the image), so every file still carries the image name.
+          echo "Flattening and renaming image-builder output:"
+          find "$OUTPUT_DIR" -type f -print
+
+          mapfile -t OUT_FILES < <(find "$OUTPUT_DIR" -mindepth 1 -type f)
+          if [ ${#OUT_FILES[@]} -eq 0 ]; then
+            echo "ERROR: no output files found under $OUTPUT_DIR"
+            exit 1
+          fi
+
+          BASE_NAME="${{ matrix.image_name }}-${{ matrix.format }}"
+          if [ ${#OUT_FILES[@]} -eq 1 ]; then
+            SRC="${OUT_FILES[0]}"
+            FNAME=$(basename "$SRC")
+            if [[ "$FNAME" == *.* ]]; then
+              EXT="${FNAME##*.}"
+              DEST="$OUTPUT_DIR/${BASE_NAME}.${EXT}"
+            else
+              DEST="$OUTPUT_DIR/${BASE_NAME}"
+            fi
+            mv "$SRC" "$DEST"
+          else
+            for SRC in "${OUT_FILES[@]}"; do
+              FNAME=$(basename "$SRC")
+              mv "$SRC" "$OUTPUT_DIR/${BASE_NAME}-${FNAME}"
+            done
+          fi
+
+          # Remove the now-empty directories image-builder left behind.
+          find "$OUTPUT_DIR" -mindepth 1 -type d -empty -delete
+
+          echo "Final artifact layout:"
+          ls -la "$OUTPUT_DIR"/
+
           cat > /tmp/Containerfile.artifact << 'EOF'
           FROM scratch
-          COPY ${OUTPUT_DIR}/ /
+          COPY . /
           EOF
 
           cd ${OUTPUT_DIR}
