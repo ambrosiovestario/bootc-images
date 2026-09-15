@@ -15,7 +15,7 @@ ARG USHIFT_VER
 ##ARG BASE_IMAGE_RELEASE='9'
 ##ARG RHEM_RELEASE='1.1'
 #
-ARG BASE_IMAGE_RELEASE='10'
+#ARG BASE_IMAGE_RELEASE='10'
 #ARG RHEM_RELEASE='1.3'
 #
 ################################################################################
@@ -42,8 +42,8 @@ ARG BASE_IMAGE_RELEASE='10'
 ################################################################################
 
 RUN dnf config-manager \
-        --set-enabled rhocp-${USHIFT_VER}-for-rhel-${BASE_IMAGE_RELEASE}-$(uname -m)-rpms \
-        --set-enabled fast-datapath-for-rhel-${BASE_IMAGE_RELEASE}-$(uname -m)-rpms 
+        --set-enabled rhocp-${USHIFT_VER}-for-rhel-9-$(uname -m)-rpms \
+        --set-enabled fast-datapath-for-rhel-9-$(uname -m)-rpms 
 
 RUN dnf install -y xz yq podman-plugins inotify-tools firewalld microshift microshift-cert-manager microshift-olm  microshift-observability dialog \
      shadow-utils guestfs-tools libvirt-daemon-config-network libvirt-daemon-kvm qemu-kvm qemu-img libvirt virt-install virt-viewer libguestfs-tools python3-libguestfs virt-top \
