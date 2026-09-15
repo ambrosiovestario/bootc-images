@@ -41,6 +41,8 @@ ARG BASE_IMAGE_RELEASE='10'
 # Customization
 ################################################################################
 
+RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-${BASE_IMAGE_RELEASE}.noarch.rpm 
+
 RUN dnf config-manager \
         --set-enabled rhocp-${USHIFT_VER}-for-rhel-${BASE_IMAGE_RELEASE}-$(uname -m)-rpms \
         --set-enabled fast-datapath-for-rhel-${BASE_IMAGE_RELEASE}-$(uname -m)-rpms 
