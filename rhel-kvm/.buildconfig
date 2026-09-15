@@ -12,15 +12,6 @@ platforms: linux/amd64
 artifact_formats: bootc-generic-iso
 
 
-# bootc-generic-iso (and bootc-installer) are currently x86_64-only in
-# image-builder: they unconditionally require legacy-BIOS grub2 files under
-# /usr/lib/grub/i386-pc, which cannot exist on arm64 (no BIOS boot mode).
-# Restrict the ISO artifact to amd64 while still building the bootc
-# container image itself for both platforms above. Remove this once
-# image-builder supports arm64 ISOs.
-artifact_platforms: linux/amd64
-
-
 ##### INSTALLER (required for bootc-generic-iso and bootc-installer formats)
 # Name of the image built under _base_anaconda_images_/<name>/ (Anaconda +
 # tooling, no kickstart). The workflow pulls that base, then builds

@@ -58,3 +58,4 @@ RUN chmod +x /usr/local/bin/* && \
 #    systemctl enable cockpit.socket && \
 #    firewall-offline-cmd --zone=public --add-port=9090/tcp && \
 #    dnf clean all
+
