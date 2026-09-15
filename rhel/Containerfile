@@ -1,8 +1,8 @@
-#FROM registry.redhat.io/rhel9/rhel-bootc:9.6
+ARG BASE_IMAGE_RELEASE='10'
+ARG BASE_IMAGE_TAG='10.2'
 
-## move to rhel 10 ##########################################
-FROM registry.redhat.io/rhel10/rhel-bootc:10.2
-################################################
+FROM registry.redhat.io/rhel${BASE_IMAGE_RELEASE}/rhel-bootc:${BASE_IMAGE_TAG}
+    
 
 RUN dnf install -y greenboot greenboot-default-health-checks && \
     dnf clean all
@@ -12,12 +12,7 @@ COPY files/ /
 RUN chmod +x /usr/local/bin/* && \
     systemctl enable first-boot.service
 
-##   v2 remove tcpdump ########################################
-#RUN dnf install -y tcpdump && \
-#    dnf clean all
-########################################
-
-##   v3 add tree ########################################
+##   demo update ########################################
 #RUN dnf install -y tree && \
 #    dnf clean all 
 ################################################

@@ -1,7 +1,7 @@
 # .buildconfig file for restricting builds to specific architectures
 
 # Valid values: linux/amd64, linux/arm64
-platforms: linux/amd64
+platforms: linux/amd64,linux/arm64
 
 ##### INSTALLABLE ARTIFACTS
 # Valid values: true, false, auto
@@ -9,7 +9,7 @@ platforms: linux/amd64
 #artifacts: auto
 
 # Valid values: bootc-generic-iso, bootc-installer, qcow2, vmdk, raw, ami, vhd, gce
-artifact_formats: bootc-generic-iso, bootc-installer, qcow2, vmdk, raw, ami, vhd, gce
+artifact_formats: bootc-generic-iso
 
 ##### INSTALLER (optional: falls back to a repo-wide default, see vars.INSTALLER_BASE / workflow_dispatch input, when a directory has no .buildconfig or no installer_base key)
 # Name of the image built under _base_anaconda_images_/<name>/ (Anaconda +
@@ -24,4 +24,4 @@ installer_base: anaconda-rhel10-base
 ##### VERSION MANAGEMENT
 # Valid values: true, false
 # When true, keeps the existing version instead of incrementing (default: false)
-keep_version: false
+keep_version: true
