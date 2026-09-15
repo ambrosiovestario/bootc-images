@@ -36,7 +36,8 @@ ARG BASE_IMAGE_RELEASE='10'
 
 RUN dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-${BASE_IMAGE_RELEASE}.noarch.rpm 
 
-RUN dnf install -y stress xz yq podman-plugins inotify-tools firewalld dialog \
+#RUN dnf install -y stress xz yq podman-plugins inotify-tools firewalld dialog \
+RUN dnf install -y stress xz yq inotify-tools firewalld dialog \
     shadow-utils guestfs-tools libvirt-daemon-config-network libvirt-daemon-kvm qemu-kvm qemu-img libvirt virt-install virt-viewer libguestfs-tools python3-libguestfs virt-top && \
     for drv in qemu network nodedev nwfilter secret storage interface; do systemctl enable virt${drv}d{,-ro,-admin}.socket; done && \
     dnf clean all
