@@ -1,8 +1,20 @@
-[customizations.installer.kickstart]
-contents = '''
-network --bootproto=dhcp --device=link --activate --onboot=on
+text --non-interactive
+lang en_US.UTF-8
+keyboard us
+timezone UTC --utc
+
 zerombr
-user --name=admin --password=$6$nRAle.gs2bcemfTO$n706swfUtMOVfIZ2QngZCQD4OWGoOwWhAYvbzh1zPuMgD1t.Qo6b.3LQPcoVNZnQZ7RjIJi43Jik1VMbRiR.B/ --groups=wheel,libvirt --iscrypted
+clearpart --all --initlabel --disklabel=gpt
+reqpart --add-boot
+part / --grow --fstype xfs
+
+network --bootproto=dhcp --device=link --activate --onboot=on
+
+user --name=admin --password="$6$/7rTITXmb1xpkB52$1L6xl53aTMayMIqhdxh6VxLGguy2CUxxf50oqcJGElUgcyx/8nTIEBKtvP6erLtwwLS5B6ZyCEDkrZMGC8ydN/" --iscrypted --groups=wheel
+rootpw --lock
+
+bootc --source-imgref containers-storage:ghcr.io/luisarizmendi/bootc-microshift-kvm:latest --target-imgref ghcr.io/luisarizmendi/bootc-microshift-kvm:latest
+
 
 %pre --interpreter=/bin/bash
 exec > /tmp/pre.log 2>&1
@@ -100,4 +112,3 @@ echo "Post-install configuration complete."
 %end
 
 reboot --eject
-'''
