@@ -216,15 +216,7 @@ jobs:
                 artifact_formats=$(remap_formats "$artifact_formats")
               fi
 
-              # Get artifact_platforms if specified. This restricts which
-              # platforms *artifacts* (ISOs/disk images) are built for,
-              # independent of `platforms:` (which governs the bootc
-              # container image matrix). This is needed because
-              # bootc-generic-iso/bootc-installer are currently x86_64-only
-              # in image-builder (see the note near INSTALLER_BASE below),
-              # while the bootc container image itself can still be built
-              # multi-arch. Falls back to dir_platforms (i.e. the same set
-              # as the container images) when not set.
+              # Restricts artifact platforms (see note near get_installer_base).
               artifact_platforms=$(grep -E '^artifact_platforms\s*[:=]\s*' "$dir/.buildconfig" | sed -E 's/^artifact_platforms\s*[:=]\s*//' | tr -d '"'"'" | tr -d ' ' || echo "")
             fi
 
@@ -259,18 +251,11 @@ jobs:
           # while this directory's own image becomes
           # --bootc-installer-payload-ref.
           #
-          # NOTE - arm64 is currently unsupported for these ISO formats:
-          # image-builder's bootc-generic-iso/bootc-installer pipelines
-          # unconditionally add a legacy-BIOS grub2 ISO stage that requires
-          # /usr/lib/grub/i386-pc, which doesn't exist (and can't) on arm64,
-          # since aarch64 has no BIOS boot mode at all. This fails even
-          # though the installer's own Containerfile correctly installs only
-          # UEFI (aa64) grub/shim packages there. See the "bootc ISO
-          # contract" slides for confirmation that this path is x86_64-only
-          # today: https://fosdem.org/2026/events/attachments/8MUFCA-building_isos_from_oci_containers/slides/267410/slides-ex_9n7vkn8.pdf
-          # Use `artifact_platforms:` in .buildconfig to restrict just the
-          # ISO/disk-image artifacts to linux/amd64 while still building the
-          # bootc container image itself for both platforms via `platforms:`.
+          # NOTE: arm64 unsupported for these ISO formats today - the ISO
+          # pipeline needs BIOS grub2 files under /usr/lib/grub/i386-pc,
+          # which can't exist on arm64 (no BIOS boot). Ref: fosdem.org/2026
+          # "Building ISOs from OCI containers". Use `artifact_platforms:`
+          # to restrict ISOs to amd64 while building the image for both.
           get_installer_base() {
             local dir="$1"
 
@@ -550,7 +535,7 @@ jobs:
               ARTIFACT_FORMATS="${CONFIG_PARTS[1]:-$FORMATS}"
               ARTIFACT_PLATFORMS="${CONFIG_PARTS[2]}"
 
-              echo "Directory $DIR artifact config - create: $CREATE_ARTIFACTS, formats: $ARTIFACT_FORMATS, artifact platforms: $ARTIFACT_PLATFORMS (image platforms: $ALLOWED_PLATFORMS)"
+              echo "Directory $DIR artifact config - create: $CREATE_ARTIFACTS, formats: $ARTIFACT_FORMATS, artifact platforms: $ARTIFACT_PLATFORMS"
 
               INSTALLER_BASE=$(get_installer_base "$DIR")
               echo "Directory $DIR installer base: ${INSTALLER_BASE:-<none, falls back to default '$DEFAULT_INSTALLER_BASE' for ISO formats>}"
