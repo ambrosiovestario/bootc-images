@@ -652,6 +652,7 @@ jobs:
             echo "Registering with username and password..."
             subscription-manager register --username=${{ secrets.RH_USERNAME }} --password=${{ secrets.RH_PASSWORD }}
           fi
+          cat /var/log/rhsm/rhsm.log
 
       - name: Workaround open podman-login action issue
         env:
