@@ -57,4 +57,3 @@ RUN chmod +x /usr/local/bin/* && \
 #    firewall-offline-cmd --zone=public --add-port=9090/tcp && \
 #    dnf clean all
 
-
