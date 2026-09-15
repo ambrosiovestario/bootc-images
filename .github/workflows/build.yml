@@ -204,6 +204,7 @@ jobs:
 
             local create_artifacts=""
             local artifact_formats=""
+            local artifact_platforms=""
 
             if [ -f "$dir/.buildconfig" ]; then
               # Check if artifacts are explicitly enabled/disabled (default: auto)
@@ -214,6 +215,17 @@ jobs:
               if [ -n "$artifact_formats" ]; then
                 artifact_formats=$(remap_formats "$artifact_formats")
               fi
+
+              # Get artifact_platforms if specified. This restricts which
+              # platforms *artifacts* (ISOs/disk images) are built for,
+              # independent of `platforms:` (which governs the bootc
+              # container image matrix). This is needed because
+              # bootc-generic-iso/bootc-installer are currently x86_64-only
+              # in image-builder (see the note near INSTALLER_BASE below),
+              # while the bootc container image itself can still be built
+              # multi-arch. Falls back to dir_platforms (i.e. the same set
+              # as the container images) when not set.
+              artifact_platforms=$(grep -E '^artifact_platforms\s*[:=]\s*' "$dir/.buildconfig" | sed -E 's/^artifact_platforms\s*[:=]\s*//' | tr -d '"'"'" | tr -d ' ' || echo "")
             fi
 
             # Set default value for artifacts if not specified
@@ -226,8 +238,14 @@ jobs:
               artifact_formats="$default_formats"
             fi
 
+            # Default artifact platforms to the directory's (image) platforms
+            # when no override is given.
+            if [ -z "$artifact_platforms" ]; then
+              artifact_platforms="$dir_platforms"
+            fi
+
             # Use pipe as delimiter to avoid comma conflicts with format lists
-            echo "$create_artifacts|$artifact_formats|$dir_platforms"
+            echo "$create_artifacts|$artifact_formats|$artifact_platforms"
           }
 
           # Function to get the shared installer base for a given app directory.
@@ -240,6 +258,19 @@ jobs:
           # kickstart and iso.yaml. The local result is used as --bootc-ref,
           # while this directory's own image becomes
           # --bootc-installer-payload-ref.
+          #
+          # NOTE - arm64 is currently unsupported for these ISO formats:
+          # image-builder's bootc-generic-iso/bootc-installer pipelines
+          # unconditionally add a legacy-BIOS grub2 ISO stage that requires
+          # /usr/lib/grub/i386-pc, which doesn't exist (and can't) on arm64,
+          # since aarch64 has no BIOS boot mode at all. This fails even
+          # though the installer's own Containerfile correctly installs only
+          # UEFI (aa64) grub/shim packages there. See the "bootc ISO
+          # contract" slides for confirmation that this path is x86_64-only
+          # today: https://fosdem.org/2026/events/attachments/8MUFCA-building_isos_from_oci_containers/slides/267410/slides-ex_9n7vkn8.pdf
+          # Use `artifact_platforms:` in .buildconfig to restrict just the
+          # ISO/disk-image artifacts to linux/amd64 while still building the
+          # bootc container image itself for both platforms via `platforms:`.
           get_installer_base() {
             local dir="$1"
 
@@ -519,7 +550,7 @@ jobs:
               ARTIFACT_FORMATS="${CONFIG_PARTS[1]:-$FORMATS}"
               ARTIFACT_PLATFORMS="${CONFIG_PARTS[2]}"
 
-              echo "Directory $DIR artifact config - create: $CREATE_ARTIFACTS, formats: $ARTIFACT_FORMATS, platforms: $ARTIFACT_PLATFORMS"
+              echo "Directory $DIR artifact config - create: $CREATE_ARTIFACTS, formats: $ARTIFACT_FORMATS, artifact platforms: $ARTIFACT_PLATFORMS (image platforms: $ALLOWED_PLATFORMS)"
 
               INSTALLER_BASE=$(get_installer_base "$DIR")
               echo "Directory $DIR installer base: ${INSTALLER_BASE:-<none, falls back to default '$DEFAULT_INSTALLER_BASE' for ISO formats>}"
@@ -1605,9 +1636,10 @@ jobs:
           echo "- \`bootc-generic-iso\` and \`bootc-installer\` both need a paired Anaconda installer image, configured via a directory's \`installer_base:\` key plus an \`installer/Containerfile\` inside that same directory. Kickstart and grub/ISO config for that installer live in \`installer/kickstart.ks\` and \`installer/iso.yaml\`, not in this workflow." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### .buildconfig options:" >> "$GITHUB_STEP_SUMMARY"
-          echo "- \`platforms: linux/amd64,linux/arm64\` - Restrict platforms for both bootc images and artifacts (default: linux/amd64,linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`platforms: linux/amd64,linux/arm64\` - Restrict platforms for the bootc container image (default: linux/amd64,linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`artifacts: true|false|auto\` - Enable/disable artifact creation (default: auto - create if none exist)" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`artifact_formats: bootc-generic-iso,bootc-installer,qcow2,vmdk,raw,ami,vhd,gce\` - Specify artifact formats" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`artifact_platforms: linux/amd64\` - Restrict which platforms *artifacts* are built for, independent of \`platforms:\`. Defaults to the same value as \`platforms:\` when unset. Use this to build a multi-arch bootc image while limiting ISO artifacts to amd64, since \`bootc-generic-iso\`/\`bootc-installer\` are currently x86_64-only in image-builder (arm64 has no BIOS/legacy-boot grub support, which the ISO pipeline unconditionally requires)." >> "$GITHUB_STEP_SUMMARY"
           echo "- \`installer_base: <name>\` - Names an image built under \`_base_anaconda_images_/<name>/\`, used for \`bootc-generic-iso\`/\`bootc-installer\` formats. Optional: falls back to the repo-wide default (vars.INSTALLER_BASE, or the workflow_dispatch input) when a directory has no .buildconfig or no installer_base key. Every directory using these formats still needs its own \`installer/Containerfile\` layering its kickstart and iso.yaml on top of that base" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`keep_version: true|false\` - Keep existing version instead of incrementing (default: false)" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`build_args: KEY=VALUE\` - Pass build arguments to Buildah (repeat the line for multiple args)" >> "$GITHUB_STEP_SUMMARY"
