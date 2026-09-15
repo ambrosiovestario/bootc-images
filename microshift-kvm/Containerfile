@@ -4,7 +4,7 @@
 ARG BASE_IMAGE_RELEASE='10'
 ARG BASE_IMAGE_TAG='10.2'
 
-ARG USHIFT_VER='4.20'
+ARG USHIFT_VER='4.22'
 ARG ACM_VER='2.15'
 ########################################
 FROM registry.redhat.io/rhel${BASE_IMAGE_RELEASE}/rhel-bootc:${BASE_IMAGE_TAG}
@@ -15,7 +15,7 @@ ARG USHIFT_VER
 ##ARG BASE_IMAGE_RELEASE='9'
 ##ARG RHEM_RELEASE='1.1'
 #
-#ARG BASE_IMAGE_RELEASE='10'
+ARG BASE_IMAGE_RELEASE='10'
 #ARG RHEM_RELEASE='1.3'
 #
 ################################################################################
