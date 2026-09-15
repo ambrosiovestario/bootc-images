@@ -34,8 +34,8 @@ FROM registry.redhat.io/rhel${BASE_IMAGE_RELEASE}/rhel-bootc:${BASE_IMAGE_TAG}
 # Customization
 ################################################################################
 
-
-RUN dnf install -y stress xz yq podman-plugins inotify-tools firewalld dialog \
+#RUN dnf install -y stress xz yq podman-plugins inotify-tools firewalld dialog \
+RUN dnf install -y xz podman-plugins inotify-tools firewalld dialog \
     shadow-utils guestfs-tools libvirt-daemon-config-network libvirt-daemon-kvm qemu-kvm qemu-img libvirt virt-install virt-viewer libguestfs-tools python3-libguestfs virt-top && \
     for drv in qemu network nodedev nwfilter secret storage interface; do systemctl enable virt${drv}d{,-ro,-admin}.socket; done && \
     dnf clean all
