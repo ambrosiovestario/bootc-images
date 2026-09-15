@@ -881,13 +881,13 @@ jobs:
           dnf -y install podman buildah skopeo jq 
           dnf clean all
 
-      - name: Setup output directory
+      - name: Setup output and osbuild scratch directories
         run: |
           set -euo pipefail
-          
+
           echo "=== /mnt contents ==="
           ls -la /mnt || true
-          
+
           if mkdir -p /mnt/output 2>/dev/null; then
             echo "Successfully created output directory in /mnt"
             OUTPUT_DIR="/mnt/output"
@@ -896,9 +896,34 @@ jobs:
             mkdir -p /var/tmp/output
             OUTPUT_DIR="/var/tmp/output"
           fi
-          
+
           echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
           echo "Using output directory: $OUTPUT_DIR"
+
+          # image-builder-cli/osbuild requires its own scratch tree at
+          # /run/osbuild to sit on a real filesystem, not overlayfs (see
+          # image-builder-cli's own pkg/setup/setup.go: "this must be a
+          # tmpfs as we cannot write security contexts on overlayfs"). This
+          # job's own container root is Docker's overlay2-backed storage,
+          # so /run/osbuild would otherwise end up on overlayfs too. A
+          # bind-mounted directory on /mnt (a real, separate disk, same
+          # reasoning as OUTPUT_DIR above) is used instead of relying on
+          # the container's own /run. This matters for every artifact
+          # format, not just bootc-generic-iso: any format can hit
+          # "'overlay' is not supported over overlayfs, a mount_program is
+          # required" if osbuild's internal steps end up nesting a
+          # containers-storage overlay mount inside this scratch tree.
+          if mkdir -p /mnt/osbuild-run 2>/dev/null; then
+            echo "Successfully created osbuild scratch directory in /mnt"
+            OSBUILD_RUN_DIR="/mnt/osbuild-run"
+          else
+            echo "Cannot write to /mnt, using /var/tmp instead for osbuild scratch dir"
+            mkdir -p /var/tmp/osbuild-run
+            OSBUILD_RUN_DIR="/var/tmp/osbuild-run"
+          fi
+
+          echo "OSBUILD_RUN_DIR=$OSBUILD_RUN_DIR" >> $GITHUB_ENV
+          echo "Using osbuild scratch directory: $OSBUILD_RUN_DIR"
 
       - name: Register with Red Hat subscription manager
         run: |
@@ -1012,6 +1037,7 @@ jobs:
           IMAGE="${{ env.DEST_REGISTRY_HOST }}/${{ env.DEST_REGISTRY_USER }}/${{ env.IMAGE_PREFIX }}-${{ matrix.image_name }}:latest-${{ matrix.arch }}"
 
           echo "Using output directory: $OUTPUT_DIR"
+          echo "Using osbuild scratch directory: $OSBUILD_RUN_DIR"
           echo "Creating ${{ matrix.format }} artifact for $IMAGE"
 
           # image-builder (the bootc-image-builder replacement) does not auto-mount
@@ -1044,35 +1070,27 @@ jobs:
             BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
           fi
 
-          # bootc-generic-iso builds the OS tree straight from the container
-          # image's own layers, so osbuild ends up initializing a *second*,
-          # nested overlay-driver containers-storage inside the tree it's
-          # assembling (at /run/osbuild/tree/var/lib/containers/storage). This
+          # image-builder-cli/osbuild needs its own scratch tree at
+          # /run/osbuild to live on a real filesystem, not overlayfs (see
+          # image-builder-cli's pkg/setup/setup.go: "this must be a tmpfs
+          # as we cannot write security contexts on overlayfs"). This
           # step's own filesystem is already overlayfs (GitHub Actions
           # "container:" jobs run on Docker's overlay2 driver), and the
-          # kernel refuses to stack a native overlay mount on top of another
-          # overlay mount:
+          # kernel refuses to stack a native overlay mount on top of
+          # another overlay mount:
           #   'overlay' is not supported over overlayfs, a mount_program is required
-          # bootc-installer/anaconda-iso and the plain disk formats build
-          # their tree a different way and don't hit this, so it's scoped to
-          # bootc-generic-iso only. fuse-overlayfs is the userspace
-          # mount_program built for exactly this nested case; we hand it to
-          # the nested container's containers-storage config via a mounted
-          # storage.conf rather than trying to change the host's.
-          STORAGE_CONF_MOUNT=""
-          if [ "${{ matrix.format }}" = "bootc-generic-iso" ]; then
-            echo "Using fuse-overlayfs as the overlay mount_program for the nested bootc-generic-iso build (works around overlay-on-overlayfs)"
-            cat > /tmp/nested-storage.conf << 'EOF'
-          [storage]
-          driver = "overlay"
-          runroot = "/run/containers/storage"
-          graphroot = "/var/lib/containers/storage"
-
-          [storage.options.overlay]
-          mount_program = "/usr/bin/fuse-overlayfs"
-          EOF
-            STORAGE_CONF_MOUNT="-v /tmp/nested-storage.conf:/etc/containers/storage.conf:ro"
-          fi
+          # bootc-generic-iso is the format we've hit this on in practice
+          # (it assembles the OS tree straight from the container image's
+          # own layers, nesting a containers-storage overlay mount inside
+          # /run/osbuild/tree), but any format's internal osbuild steps
+          # could in principle hit the same thing, and the fix costs
+          # nothing for formats that don't need it — so it's applied
+          # unconditionally here, bind-mounting a real directory on /mnt
+          # (OSBUILD_RUN_DIR, a separate disk, not part of this
+          # container's overlay rootfs) at /run/osbuild instead of letting
+          # osbuild use its default location on the container's own
+          # overlay filesystem.
+          rm -rf "${OSBUILD_RUN_DIR:?}"/* 2>/dev/null || true
 
           podman run \
             --rm \
@@ -1081,8 +1099,8 @@ jobs:
             --security-opt label=type:unconfined_t \
             -v ${OUTPUT_DIR}:/output \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
+            -v ${OSBUILD_RUN_DIR}:/run/osbuild \
             ${CONFIG_MOUNT} \
-            ${STORAGE_CONF_MOUNT} \
             ghcr.io/osbuild/image-builder-cli:latest \
             build \
             "${BOOTC_ARGS[@]}" \
@@ -1609,6 +1627,7 @@ jobs:
           echo "- Base path can be configured using the \`BASE_PATH\` variable or workflow input." >> "$GITHUB_STEP_SUMMARY"
           echo "- Installable artifacts are built with \`image-builder\` (ghcr.io/osbuild/image-builder-cli), the replacement for the deprecated \`bootc-image-builder\`. \`anaconda-iso\` is not supported for bootc images; use \`bootc-generic-iso\` (preferred) or \`bootc-installer\`." >> "$GITHUB_STEP_SUMMARY"
           echo "- \`bootc-generic-iso\` and \`bootc-installer\` both need a paired Anaconda installer image, configured via a directory's \`installer_base:\` key plus an \`installer/Containerfile\` inside that same directory. Kickstart and grub/ISO config for that installer live in \`installer/kickstart.ks\` and \`installer/iso.yaml\`, not in this workflow." >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`image-builder-cli\`'s osbuild scratch tree (\`/run/osbuild\`) is bind-mounted onto a real disk (\`/mnt/osbuild-run\`) instead of the job container's own overlay rootfs, to avoid 'overlay is not supported over overlayfs' failures during artifact builds." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### .buildconfig options:" >> "$GITHUB_STEP_SUMMARY"
           echo "- \`platforms: linux/amd64,linux/arm64\` - Restrict platforms for both bootc images and artifacts (default: linux/amd64,linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
