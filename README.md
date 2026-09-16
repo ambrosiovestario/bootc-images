@@ -211,9 +211,6 @@ The workflow can create the following installable formats, using `image-builder`
 
 > **Note:** `anaconda-iso` (the old `bootc-image-builder` format name) is no longer supported. The workflow automatically remaps any `anaconda-iso` value to `bootc-installer` for backward compatibility, but you should update `.buildconfig`/workflow inputs to use `bootc-generic-iso` or `bootc-installer` directly.
 
-> ⚠️ **`bootc-generic-iso` does NOT embed the bootc image in the ISO**, even though it's paired with an `installer_base`. Passing `--bootc-installer-payload-ref` to embed the payload currently breaks the `image-builder` build (nested overlayfs-over-overlayfs is not supported by the kernel), so this workflow builds `bootc-generic-iso` **without** it. The resulting ISO instead has Anaconda pull the bootc image from the registry at install time (see `--source-imgref` in the app's `installer/kickstart.ks`) — so a network connection is required during install.
-> **If you need the bootc image embedded in the ISO (fully offline install), use `bootc-installer` instead** — it does pass `--bootc-installer-payload-ref` and works correctly.
-
 `bootc-generic-iso` and `bootc-installer` both require an `installer_base` — see [Installer Base Images](#installer-base-images-for-iso-formats).
 
 ---
