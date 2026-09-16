@@ -11,6 +11,7 @@ artifacts: true
 # Valid values: bootc-generic-iso, bootc-installer, qcow2, vmdk, raw, ami, vhd, gce
 artifact_formats: bootc-generic-iso
 
+
 ##### INSTALLER (required for bootc-generic-iso and bootc-installer formats)
 # Name of the image built under _base_anaconda_images_/<name>/ (Anaconda +
 # tooling, no kickstart). The workflow pulls that base, then builds
