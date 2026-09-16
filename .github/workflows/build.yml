@@ -998,6 +998,8 @@ jobs:
 
           echo "INSTALLER_IMAGE=$INSTALLER_IMAGE" >> "$GITHUB_ENV"
 
+          podman rm $BASE_IMAGE
+
       - name: Check available disk space
         run: |
           echo "=== Disk space before build==="
@@ -1052,6 +1054,21 @@ jobs:
           # and the nested store always fell back to the in-tree overlay driver.
           # The real fix is to not embed the payload at all (see the
           # bootc-generic-iso branch above).
+
+          echo "Running:"
+          echo "podman run \
+            --rm \
+            --privileged \
+            --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v ${OUTPUT_DIR}:/output \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            ${CONFIG_MOUNT} \
+            ghcr.io/osbuild/image-builder:latest \
+            build \
+            "${BOOTC_ARGS[@]}" \
+            ${BLUEPRINT_FLAG} \
+            ${{ matrix.format }}"
 
           podman run \
             --rm \

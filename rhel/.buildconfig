@@ -2,7 +2,6 @@
 
 # Valid values: linux/amd64, linux/arm64
 platforms: linux/amd64,linux/arm64
-#platforms: linux/amd64
 
 ##### INSTALLABLE ARTIFACTS
 # Valid values: true, false, auto
