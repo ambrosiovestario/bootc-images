@@ -93,3 +93,4 @@ RUN cat > /usr/lib/systemd/system/microshift.service.d/copy-embedded-images.conf
 [Service]
 ExecStartPre=/usr/bin/copy-embedded-images
 EOF
+
