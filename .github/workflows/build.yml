@@ -1038,26 +1038,9 @@ jobs:
           # need --bootc-ref, pointed directly at this app's own image.
           BOOTC_ARGS=(--bootc-ref "$IMAGE")
           if [ -n "${INSTALLER_IMAGE:-}" ]; then
-            if [ "${{ matrix.format }}" = "bootc-generic-iso" ]; then
-              # bootc-generic-iso: do NOT pass --bootc-installer-payload-ref.
-              # Embedding the payload makes image-builder copy it into a second,
-              # nested containers-storage (overlay driver) inside the ISO tree it
-              # is assembling (/run/osbuild/tree/var/lib/containers/storage). This
-              # job already runs on overlayfs, and the kernel refuses to stack a
-              # native overlay mount over overlayfs:
-              #   'overlay' is not supported over overlayfs, a mount_program is required
-              # The image-builder docs (doc/20-advanced/20-bootc/10-isos.md) mark
-              # the flag as OPTIONAL for bootc-generic-iso and their canonical
-              # example does not pass it: the ISO is still a working installer,
-              # and anaconda pulls the bootc image from the registry at install
-              # time (see the --source-imgref in installer/kickstart.ks).
-              echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE (no payload ref for bootc-generic-iso)"
-              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE")
-            else
               echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
               echo "Using $IMAGE as --bootc-installer-payload-ref"
               BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
-            fi
           fi
 
           # Note: an earlier version of this step mounted a nested storage.conf
