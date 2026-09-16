@@ -1038,25 +1038,37 @@ jobs:
           # need --bootc-ref, pointed directly at this app's own image.
           BOOTC_ARGS=(--bootc-ref "$IMAGE")
           if [ -n "${INSTALLER_IMAGE:-}" ]; then
-            echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
-            echo "Using $IMAGE as --bootc-installer-payload-ref"
-            BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+            if [ "${{ matrix.format }}" = "bootc-generic-iso" ]; then
+              # bootc-generic-iso: do NOT pass --bootc-installer-payload-ref.
+              # Embedding the payload makes image-builder copy it into a second,
+              # nested containers-storage (overlay driver) inside the ISO tree it
+              # is assembling (/run/osbuild/tree/var/lib/containers/storage). This
+              # job already runs on overlayfs, and the kernel refuses to stack a
+              # native overlay mount over overlayfs:
+              #   'overlay' is not supported over overlayfs, a mount_program is required
+              # The image-builder docs (doc/20-advanced/20-bootc/10-isos.md) mark
+              # the flag as OPTIONAL for bootc-generic-iso and their canonical
+              # example does not pass it: the ISO is still a working installer,
+              # and anaconda pulls the bootc image from the registry at install
+              # time (see the --source-imgref in installer/kickstart.ks).
+              echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE (no payload ref for bootc-generic-iso)"
+              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE")
+            else
+              echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
+              echo "Using $IMAGE as --bootc-installer-payload-ref"
+              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+            fi
           fi
 
-          # --bootc-installer-payload-ref makes image-builder copy the payload
-          # into a second, nested containers-storage (overlay driver) inside
-          # the tree it assembles at /run/osbuild/tree. Left alone, that path
-          # sits on this container's own overlay-merged root, so the kernel
-          # refuses the native overlay mount osbuild does there:
-          #   'overlay' is not supported over overlayfs, a mount_program is required
-          # A storage.conf with mount_program=fuse-overlayfs does NOT fix this:
-          # the payload-embedding stage is generated with an empty storage path
-          # (osbuild/image-builder pkg/manifest/os_from_container.go ->
-          # GenContainerStorageStages("", ...)), so it never emits a
-          # containers.storage.conf stage and ignores any external config.
-          # Instead, bind-mount real host disk onto /run/osbuild so the nested
-          # store lands on ext4, not on this container's own overlayfs.
-          mkdir -p /mnt/osbuild-run
+          # Note: an earlier version of this step mounted a nested storage.conf
+          # with mount_program=fuse-overlayfs for bootc-generic-iso. It was
+          # inert: the payload-embedding stages are generated with an empty
+          # storage path (see osbuild/image-builder
+          # pkg/manifest/os_from_container.go -> GenContainerStorageStages("", ...)),
+          # so they never emitted a containers.storage.conf stage of their own
+          # and the nested store always fell back to the in-tree overlay driver.
+          # The real fix is to not embed the payload at all (see the
+          # bootc-generic-iso branch above).
 
           podman run \
             --rm \
@@ -1065,7 +1077,6 @@ jobs:
             --security-opt label=type:unconfined_t \
             -v ${OUTPUT_DIR}:/output \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
-            -v /mnt/osbuild-run:/run/osbuild \
             ${CONFIG_MOUNT} \
             ghcr.io/osbuild/image-builder-cli:latest \
             build \
