@@ -869,7 +869,7 @@ jobs:
       IMAGE_PREFIX: "${{ needs.setup.outputs.image_prefix }}"
     container:
       image: registry.access.redhat.com/ubi10/ubi
-      options: --privileged --user root -v /mnt:/mnt
+      options: --privileged --user root -v /mnt:/mnt -v /var/lib/containers/storage:/var/lib/containers/storage
     permissions:
       contents: write
       packages: write
@@ -881,58 +881,6 @@ jobs:
         run: |
           dnf -y install podman buildah skopeo jq 
           dnf clean all
-
-      - name: Configure container storage away from the job container's own overlay rootfs
-        run: |
-          set -euo pipefail
-
-          # This job runs inside a container (see the `container:` block for
-          # this job above), whose own root filesystem is provided by the
-          # runner's Docker overlay2 storage driver -- i.e. it is itself an
-          # overlay mount. Podman's default storage path
-          # (/var/lib/containers/storage) lives on that overlay mount unless
-          # relocated. When image-builder later creates its own overlay mount
-          # to embed a --bootc-installer-payload-ref inside a
-          # bootc-generic-iso/bootc-installer tree, it stacks a native overlay
-          # mount on top of that overlay rootfs, which the kernel refuses:
-          #   'overlay' is not supported over overlayfs, a mount_program is required
-          #
-          # /mnt is bind-mounted straight through from the actual runner host
-          # (this job's `container: options: -v /mnt:/mnt`), so it is NOT
-          # backed by the job container's own overlay rootfs. Relocating
-          # podman's storage graphroot there -- before anything is pulled or
-          # built -- avoids the nested-overlay problem for every podman /
-          # image-builder invocation in this job. This mirrors reproducing the
-          # issue on a plain VM by bind-mounting the host's real
-          # /var/lib/containers/storage instead of using a container's own.
-          if mkdir -p /mnt/containers/storage 2>/dev/null; then
-            echo "Successfully created storage directory in /mnt"
-            STORAGE_ROOT="/mnt/containers/storage"
-          else
-            echo "Cannot write to /mnt, using /var/tmp instead"
-            mkdir -p /var/tmp/containers/storage
-            STORAGE_ROOT="/var/tmp/containers/storage"
-          fi
-
-          echo "STORAGE_ROOT=$STORAGE_ROOT" >> $GITHUB_ENV
-
-          mkdir -p /etc/containers
-          cat > /etc/containers/storage.conf << EOF
-          [storage]
-          driver = "overlay"
-          runroot = "/run/containers/storage"
-          graphroot = "$STORAGE_ROOT"
-
-          [storage.options]
-          additionalimagestores = []
-
-          [storage.options.overlay]
-          mountopt = "nodev,metacopy=on"
-          EOF
-
-          echo "=== Storage configuration ==="
-          cat /etc/containers/storage.conf
-          podman info | grep -A 5 "graphRoot"
 
       - name: Setup output directory
         run: |
@@ -1050,6 +998,8 @@ jobs:
 
           echo "INSTALLER_IMAGE=$INSTALLER_IMAGE" >> "$GITHUB_ENV"
 
+          podman rm $BASE_IMAGE
+
       - name: Check available disk space
         run: |
           echo "=== Disk space before build==="
@@ -1090,29 +1040,35 @@ jobs:
           # need --bootc-ref, pointed directly at this app's own image.
           BOOTC_ARGS=(--bootc-ref "$IMAGE")
           if [ -n "${INSTALLER_IMAGE:-}" ]; then
-            # Embed this app's image in the ISO via --bootc-installer-payload-ref
-            # for both bootc-generic-iso and bootc-installer.
-            #
-            # NOTE: this previously failed for bootc-generic-iso ('overlay' is
-            # not supported over overlayfs, a mount_program is required),
-            # because image-builder copies the payload into a second, nested
-            # containers-storage (overlay driver) inside the ISO tree it is
-            # assembling, and this job's own /var/lib/containers/storage used
-            # to sit on the overlay2 rootfs of the job container itself,
-            # stacking overlay-on-overlay. The "Configure container storage
-            # away from the job container's own overlay rootfs" step earlier
-            # in this job relocates podman's storage graphroot to $STORAGE_ROOT
-            # (under /mnt, bind-mounted straight through from the runner host,
-            # not the job container's overlay rootfs) specifically to remove
-            # that nesting, so this flag is passed unconditionally again. If
-            # you still hit the overlay error after this change, the storage
-            # relocation isn't taking effect for some reason -- check
-            # `podman info | grep graphRoot` in this job's logs before
-            # re-introducing a bootc-generic-iso special case.
-            echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
-            echo "Using $IMAGE as --bootc-installer-payload-ref"
-            BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+              echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
+              echo "Using $IMAGE as --bootc-installer-payload-ref"
+              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
           fi
+
+          # Note: an earlier version of this step mounted a nested storage.conf
+          # with mount_program=fuse-overlayfs for bootc-generic-iso. It was
+          # inert: the payload-embedding stages are generated with an empty
+          # storage path (see osbuild/image-builder
+          # pkg/manifest/os_from_container.go -> GenContainerStorageStages("", ...)),
+          # so they never emitted a containers.storage.conf stage of their own
+          # and the nested store always fell back to the in-tree overlay driver.
+          # The real fix is to not embed the payload at all (see the
+          # bootc-generic-iso branch above).
+
+          echo "Running:"
+          echo "podman run \
+            --rm \
+            --privileged \
+            --pull=newer \
+            --security-opt label=type:unconfined_t \
+            -v ${OUTPUT_DIR}:/output \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            ${CONFIG_MOUNT} \
+            ghcr.io/osbuild/image-builder:latest \
+            build \
+            "${BOOTC_ARGS[@]}" \
+            ${BLUEPRINT_FLAG} \
+            ${{ matrix.format }}"
 
           podman run \
             --rm \
@@ -1120,9 +1076,9 @@ jobs:
             --pull=newer \
             --security-opt label=type:unconfined_t \
             -v ${OUTPUT_DIR}:/output \
-            -v ${STORAGE_ROOT}:/var/lib/containers/storage \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
             ${CONFIG_MOUNT} \
-            ghcr.io/osbuild/image-builder-cli:latest \
+            ghcr.io/osbuild/image-builder:latest \
             build \
             "${BOOTC_ARGS[@]}" \
             ${BLUEPRINT_FLAG} \
@@ -1149,7 +1105,7 @@ jobs:
             echo "Removing $INSTALLER_IMAGE"
             podman rmi "$INSTALLER_IMAGE" || true
           fi
-          podman rmi ghcr.io/osbuild/image-builder-cli:latest || true
+          podman rmi ghcr.io/osbuild/image-builder:latest || true
 
       - name: Check available disk space
         run: |
@@ -1162,14 +1118,6 @@ jobs:
       - name: Configure container storage for scratch image build
         run: |
           set -euo pipefail
-
-          # NOTE: storage was already relocated to $STORAGE_ROOT by the
-          # "Configure container storage away from the job container's own
-          # overlay rootfs" step near the start of this job. This step
-          # recomputes and rewrites the same config, which is redundant but
-          # harmless (podman system reset -f here only clears images already
-          # rmi'd earlier in this job) -- kept as-is for safety since it's
-          # what the buildah bud step below has always relied on.
           
           if mkdir -p /mnt/containers/storage 2>/dev/null; then
             echo "Successfully created storage directory in /mnt"
@@ -1654,7 +1602,7 @@ jobs:
           echo "- Version tags are created as vN (and vN-<arch> for platform images)." >> "$GITHUB_STEP_SUMMARY"
           echo "- Platform restrictions can be specified using a \`.buildconfig\` file in each directory." >> "$GITHUB_STEP_SUMMARY"
           echo "- Base path can be configured using the \`BASE_PATH\` variable or workflow input." >> "$GITHUB_STEP_SUMMARY"
-          echo "- Installable artifacts are built with \`image-builder\` (ghcr.io/osbuild/image-builder-cli), the replacement for the deprecated \`bootc-image-builder\`. \`anaconda-iso\` is not supported for bootc images; use \`bootc-generic-iso\` (preferred) or \`bootc-installer\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Installable artifacts are built with \`image-builder\` (ghcr.io/osbuild/image-builder), the replacement for the deprecated \`bootc-image-builder\`. \`anaconda-iso\` is not supported for bootc images; use \`bootc-generic-iso\` (preferred) or \`bootc-installer\`." >> "$GITHUB_STEP_SUMMARY"
           echo "- \`bootc-generic-iso\` and \`bootc-installer\` both need a paired Anaconda installer image, configured via a directory's \`installer_base:\` key plus an \`installer/Containerfile\` inside that same directory. Kickstart and grub/ISO config for that installer live in \`installer/kickstart.ks\` and \`installer/iso.yaml\`, not in this workflow." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### .buildconfig options:" >> "$GITHUB_STEP_SUMMARY"
