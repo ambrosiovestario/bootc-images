@@ -30,8 +30,9 @@ Store your images in designated folders within the repository's root directory. 
    - Automatically unregisters subscription when complete
 
 3. **Build Artifacts** (Optional)
-   - Uses `bootc-image-builder` to create installable artifacts
-   - Supports custom artifact configuration via optional `config.toml` files
+   - Uses **`image-builder`** (`ghcr.io/osbuild/image-builder-cli`) to create installable artifacts — this replaces the now-deprecated `bootc-image-builder`
+   - Supports custom artifact configuration via optional `config.toml` files, passed explicitly as a `--blueprint`
+   - ISO-style formats (`bootc-generic-iso`, `bootc-installer`) additionally build a per-app Anaconda installer image on top of a shared base (see [Installer Base Images](#installer-base-images-for-iso-formats) below)
    - Packages artifacts into container images for easy distribution
    - Supports multiple formats and platforms simultaneously
 
@@ -63,6 +64,7 @@ Choose one authentication method:
 **Repository Variables:**
 - `DEST_REGISTRY_HOST`: Destination registry (default: `ghcr.io`)
 - `DEST_REGISTRY_USER`: Registry username (default: repository owner)
+- `INSTALLER_BASE`: Repo-wide default `installer_base` (see [Installer Base Images](#installer-base-images-for-iso-formats)) used when a directory has no `.buildconfig` or no `installer_base` key (default: `anaconda-rhel10-base`)
 
 **Repository Secrets:**
 - `DEST_REGISTRY_PASSWORD`: Registry password (default: GitHub token)
@@ -100,9 +102,13 @@ my-arm64-only-image/
 ├── .buildconfig          
 └── other-files...
 
-my-image-with-artifacts/
+my-image-with-iso-artifact/
 ├── Containerfile
-├── .buildconfig          
+├── .buildconfig           (needs installer_base: <name>)
+└── installer/
+    ├── Containerfile      (FROM the shared installer base)
+    ├── kickstart.ks
+    └── iso.yaml
 
 my-minimal-image/
 ├── Containerfile         
@@ -165,6 +171,7 @@ If you need different credentials for pulling from registry.redhat.io:
 2. Under **Variables**, add any of these that you want to override:
    - `BASE_PATH`: Path where the image definitions are located in the repo (defaults to "/")
    - `IMAGE_PREFIX`: Prefix that will be included in the container image names (defaults to "bootc")
+   - `INSTALLER_BASE`: Default `installer_base` for ISO formats (defaults to "anaconda-rhel10-base")
 
 ---
 
@@ -186,20 +193,28 @@ https://github.com/{username}/{repository}/pkgs/container/{image-name}
 
 If your directory is named `myimage`:
 - Bootc image: `ghcr.io/myorg/bootc-myimage:latest`
-- ISO artifact: `ghcr.io/myorg/bootc-myimage-anaconda-iso:latest`
+- ISO artifact: `ghcr.io/myorg/bootc-myimage-bootc-generic-iso:latest`
 - QCOW2 artifact: `ghcr.io/myorg/bootc-myimage-qcow2:latest`
 
 
 ### Available Artifact Formats
 
-The workflow can create the following installable formats:
-- `anaconda-iso` - Anaconda installer ISO
+The workflow can create the following installable formats, using `image-builder`:
+- `bootc-generic-iso` - Generic Anaconda installer ISO (default, **preferred** ISO format — see the warning below)
+- `bootc-installer` - Anaconda installer ISO with the bootc image embedded in the ISO itself
 - `qcow2` - QEMU disk image
 - `vmdk` - VMware disk image  
 - `raw` - Raw disk image
 - `ami` - Amazon Machine Image
 - `vhd` - Hyper-V disk image
 - `gce` - Google Compute Engine image
+
+> **Note:** `anaconda-iso` (the old `bootc-image-builder` format name) is no longer supported. The workflow automatically remaps any `anaconda-iso` value to `bootc-installer` for backward compatibility, but you should update `.buildconfig`/workflow inputs to use `bootc-generic-iso` or `bootc-installer` directly.
+
+> ⚠️ **`bootc-generic-iso` does NOT embed the bootc image in the ISO**, even though it's paired with an `installer_base`. Passing `--bootc-installer-payload-ref` to embed the payload currently breaks the `image-builder` build (nested overlayfs-over-overlayfs is not supported by the kernel), so this workflow builds `bootc-generic-iso` **without** it. The resulting ISO instead has Anaconda pull the bootc image from the registry at install time (see `--source-imgref` in the app's `installer/kickstart.ks`) — so a network connection is required during install.
+> **If you need the bootc image embedded in the ISO (fully offline install), use `bootc-installer` instead** — it does pass `--bootc-installer-payload-ref` and works correctly.
+
+`bootc-generic-iso` and `bootc-installer` both require an `installer_base` — see [Installer Base Images](#installer-base-images-for-iso-formats).
 
 ---
 
@@ -215,7 +230,7 @@ Note: Check in the **Packages** section in the repo the available images.
 To extract installable artifacts (ISOs, disk images, etc.) from the artifact container images:
 
 ```bash
-# Example: Extract an anaconda-iso artifact
+# Example: Extract a bootc-generic-iso artifact
 mkdir artifacts
 podman create --name temp-container ghcr.io/{owner}/bootc-{directory}-{format}:{label}
 podman cp temp-container:/ ./artifacts/
@@ -243,8 +258,13 @@ platforms: linux/arm64
 # Control artifact creation
 artifacts: true|false|auto    # default: auto (create if none exist)
 
-# Specify artifact formats (default: anaconda-iso)
-artifact_formats: anaconda-iso,qcow2,vmdk
+# Specify artifact formats (default: bootc-generic-iso)
+artifact_formats: bootc-generic-iso,bootc-installer,qcow2,vmdk
+
+# Required for bootc-generic-iso / bootc-installer formats (see Installer
+# Base Images below). Falls back to the repo-wide default (vars.INSTALLER_BASE
+# or the workflow_dispatch input) if omitted.
+installer_base: anaconda-rhel10-base
 
 # Reuse the same version tag instead of incrementing (default: false)
 keep_version: false
@@ -294,10 +314,22 @@ When `artifacts: true` or `artifacts: auto`, you can specify which formats to bu
 
 ```ini
 artifacts: true
-artifact_formats: anaconda-iso,qcow2
+artifact_formats: bootc-generic-iso,qcow2
 ```
 
-Supported formats: `anaconda-iso`, `qcow2`, `vmdk`, `raw`, `ami`, `vhd`, `gce`
+Supported formats: `bootc-generic-iso`, `bootc-installer`, `qcow2`, `vmdk`, `raw`, `ami`, `vhd`, `gce`
+
+---
+
+#### `installer_base`
+
+Required when `artifact_formats` includes `bootc-generic-iso` and/or `bootc-installer`. Names an image built under `_base_anaconda_images_/<name>/` (a shared Anaconda installer environment, no kickstart). The workflow pulls that base image, then builds this directory's own `installer/Containerfile` on top of it to produce a local, per-app installer image used as `--bootc-ref` by `image-builder`.
+
+```ini
+installer_base: anaconda-rhel10-base
+```
+
+If omitted, the repo-wide default is used (`vars.INSTALLER_BASE`, or the `workflow_dispatch` `installer_base` input — both default to `anaconda-rhel10-base`). See [Installer Base Images](#installer-base-images-for-iso-formats) for the full setup.
 
 ---
 
@@ -339,6 +371,32 @@ RUN echo "Building version ${APP_VERSION}"
 
 > **Note:** Do not use `build_args` for sensitive values like passwords or tokens.
 > Use build-time secrets instead (see below).
+
+---
+
+### Installer Base Images (for ISO formats)
+
+`bootc-generic-iso` and `bootc-installer` both build an Anaconda-based installer ISO, and both need a paired **installer base image** plus a per-app **`installer/`** directory:
+
+1. **Shared base** — an image under `_base_anaconda_images_/<name>/` (e.g. `anaconda-rhel10-base`) containing Anaconda and the tooling needed to boot as an installer. It has no kickstart or per-app config, is built like any other image directory (with its own `.buildconfig`, normally `artifacts: false`), and is never deployed to a real device — it only ever serves as the `--bootc-ref` installer environment. Rebuild it only when Anaconda/tooling itself needs to change.
+
+2. **Per-app `installer/` directory** — inside *your* image directory (e.g. `rhel/installer/`), containing:
+   - `Containerfile` — a thin layer `FROM ${BASE_IMAGE}` (the shared base, injected via build-arg) that copies in the two files below
+   - `kickstart.ks` — the app's Anaconda kickstart, including the `bootc --source-imgref ... --target-imgref ...` line that tells the installed system which bootc image to track
+   - `iso.yaml` — ISO/grub label and boot entries, copied to `/usr/lib/image-builder/bootc/iso.yaml`
+
+   This installer image is built locally at artifact-build time (never pushed to a registry) and is what `image-builder` uses as `--bootc-ref`.
+
+Wire it up in your `.buildconfig`:
+
+```ini
+artifact_formats: bootc-generic-iso
+installer_base: anaconda-rhel10-base
+```
+
+See `rhel/` and `_base_anaconda_images_/anaconda-rhel10-base/` in this repo for a working example.
+
+> ⚠️ As noted above, only `bootc-installer` embeds the bootc payload in the ISO. `bootc-generic-iso` relies on the kickstart's `--source-imgref` to pull the image from the registry during install — make sure that reference and the install-time network are correct.
 
 ---
 
@@ -415,7 +473,7 @@ RUN --mount=type=secret,id=GITLAB_TOKEN \
 
 ### config.toml File for Artifact Customization
 
-You can customize installable artifacts by adding an optional `config.toml` file to any image directory. This file will be passed to `bootc-image-builder` to configure the artifact creation process.
+You can customize installable artifacts by adding an optional `config.toml` file to any image directory. This file is passed to `image-builder` as a **blueprint** (`--blueprint /config.toml`) to configure the artifact creation process. Unlike the old `bootc-image-builder`, `image-builder` does not auto-mount a `config.toml` — the workflow only mounts and passes it when the file exists.
 
 The `config.toml` file supports various configuration options such as:
 - User accounts and SSH keys
@@ -423,7 +481,7 @@ The `config.toml` file supports various configuration options such as:
 - Network configuration
 - Package installation/removal
 - System services configuration
-- And other bootc-image-builder options
+- And other `image-builder` blueprint options
 
 **Important**: The `config.toml` file is completely optional. If it doesn't exist, artifacts will be created with default settings.
 
@@ -446,7 +504,7 @@ password = "$6$/7rTITXmb1xpkB52$1L6xl53aTMayMIqhdxh6VxLGguy2CUxxf50oqcJGElUgcyx/
 groups = ["wheel"]
 ```
 
-For more configuration options, consult the bootc-image-builder documentation.
+For more configuration options, consult the `image-builder` documentation.
 
 
 ---
@@ -459,7 +517,8 @@ You can manually trigger builds with custom parameters:
 2. Click **Run workflow**
 3. Configure:
    - **Platforms**: `linux/amd64,linux/arm64` (or subset)
-   - **Formats**: `anaconda-iso,qcow2,vmdk` (or subset)
+   - **Formats**: `bootc-generic-iso,bootc-installer,qcow2,vmdk` (or subset)
+   - **Installer base**: name of an image under `_base_anaconda_images_/<name>/`, used as the default for directories with no `installer_base` in their `.buildconfig` (default: `anaconda-rhel10-base`)
 
 ## Important Notes About GitHub Runner Limitations
 
