@@ -1056,7 +1056,7 @@ jobs:
           # bootc-generic-iso branch above).
 
           echo "Running on $(uname -m):"
-          echo "podman run --arch $(uname -m) \
+          echo "podman run \
             --rm \
             --privileged \
             --pull=newer \
@@ -1070,7 +1070,7 @@ jobs:
             ${BLUEPRINT_FLAG} \
             ${{ matrix.format }}"
 
-          podman run --arch $(uname -m) \
+          podman run \
             --rm \
             --privileged \
             --pull=newer \
