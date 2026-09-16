@@ -86,11 +86,19 @@ while IFS="," read -r img sha ; do
 done < "${IMAGE_LIST_FILE}"
 EOF
 
-RUN chmod 755 /usr/bin/copy-embedded-images && \
-    mkdir -p /usr/lib/systemd/system/microshift.service.d
+RUN cat > /usr/lib/systemd/system/copy-embedded-images.service <<'EOF'
+[Unit]
+Description=Copy embedded container images to containers-storage
+Before=multi-user.target
 
-RUN cat > /usr/lib/systemd/system/microshift.service.d/copy-embedded-images.conf <<EOF
 [Service]
-ExecStartPre=/usr/bin/copy-embedded-images
+Type=oneshot
+ExecStart=/usr/bin/copy-embedded-images
+ExecStartPost=/usr/bin/systemctl disable copy-embedded-images.service
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
 EOF
 
+RUN systemctl enable copy-embedded-images.service

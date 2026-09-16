@@ -1078,7 +1078,7 @@ jobs:
             -v ${OUTPUT_DIR}:/output \
             -v /var/lib/containers/storage:/var/lib/containers/storage \
             ${CONFIG_MOUNT} \
-            ghcr.io/osbuild/image-builder-cli:latest \
+            ghcr.io/osbuild/image-builder:latest \
             build \
             "${BOOTC_ARGS[@]}" \
             ${BLUEPRINT_FLAG} \
@@ -1105,7 +1105,7 @@ jobs:
             echo "Removing $INSTALLER_IMAGE"
             podman rmi "$INSTALLER_IMAGE" || true
           fi
-          podman rmi ghcr.io/osbuild/image-builder-cli:latest || true
+          podman rmi ghcr.io/osbuild/image-builder:latest || true
 
       - name: Check available disk space
         run: |
@@ -1602,7 +1602,7 @@ jobs:
           echo "- Version tags are created as vN (and vN-<arch> for platform images)." >> "$GITHUB_STEP_SUMMARY"
           echo "- Platform restrictions can be specified using a \`.buildconfig\` file in each directory." >> "$GITHUB_STEP_SUMMARY"
           echo "- Base path can be configured using the \`BASE_PATH\` variable or workflow input." >> "$GITHUB_STEP_SUMMARY"
-          echo "- Installable artifacts are built with \`image-builder\` (ghcr.io/osbuild/image-builder-cli), the replacement for the deprecated \`bootc-image-builder\`. \`anaconda-iso\` is not supported for bootc images; use \`bootc-generic-iso\` (preferred) or \`bootc-installer\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "- Installable artifacts are built with \`image-builder\` (ghcr.io/osbuild/image-builder), the replacement for the deprecated \`bootc-image-builder\`. \`anaconda-iso\` is not supported for bootc images; use \`bootc-generic-iso\` (preferred) or \`bootc-installer\`." >> "$GITHUB_STEP_SUMMARY"
           echo "- \`bootc-generic-iso\` and \`bootc-installer\` both need a paired Anaconda installer image, configured via a directory's \`installer_base:\` key plus an \`installer/Containerfile\` inside that same directory. Kickstart and grub/ISO config for that installer live in \`installer/kickstart.ks\` and \`installer/iso.yaml\`, not in this workflow." >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "#### .buildconfig options:" >> "$GITHUB_STEP_SUMMARY"

@@ -30,7 +30,7 @@ Store your images in designated folders within the repository's root directory. 
    - Automatically unregisters subscription when complete
 
 3. **Build Artifacts** (Optional)
-   - Uses **`image-builder`** (`ghcr.io/osbuild/image-builder-cli`) to create installable artifacts — this replaces the now-deprecated `bootc-image-builder`
+   - Uses **`image-builder`** (`ghcr.io/osbuild/image-builder`) to create installable artifacts — this replaces the now-deprecated `bootc-image-builder`
    - Supports custom artifact configuration via optional `config.toml` files, passed explicitly as a `--blueprint`
    - ISO-style formats (`bootc-generic-iso`, `bootc-installer`) additionally build a per-app Anaconda installer image on top of a shared base (see [Installer Base Images](#installer-base-images-for-iso-formats) below)
    - Packages artifacts into container images for easy distribution

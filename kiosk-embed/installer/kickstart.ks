@@ -15,4 +15,6 @@ rootpw --lock
 
 bootc --source-imgref containers-storage:ghcr.io/luisarizmendi/bootc-kiosk-embed:latest --target-imgref ghcr.io/luisarizmendi/bootc-kiosk-embed:latest
 
+systemctl set-default graphical.target
+
 reboot

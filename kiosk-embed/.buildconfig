@@ -9,7 +9,7 @@ platforms: linux/amd64
 artifacts: true
 
 # Valid values: bootc-generic-iso, bootc-installer, qcow2, vmdk, raw, ami, vhd, gce
-artifact_formats: bootc-installer
+artifact_formats: bootc-generic-iso
 
 
 ##### INSTALLER (required for bootc-generic-iso and bootc-installer formats)
