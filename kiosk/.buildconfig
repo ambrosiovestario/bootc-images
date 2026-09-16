@@ -1,8 +1,7 @@
 # .buildconfig file for restricting builds to specific architectures
 
 # Valid values: linux/amd64, linux/arm64
-#platforms: linux/amd64,linux/arm64
-platforms: linux/amd64
+platforms: linux/amd64,linux/arm64
 
 ##### INSTALLABLE ARTIFACTS
 # Valid values: true, false, auto
