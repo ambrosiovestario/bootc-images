@@ -42,6 +42,7 @@ RUN set -eu; \
         dracut-config-generic \
         dracut-network \
         grub2-common \
+        audit \
         xorriso \
         squashfs-tools \
         lorax-templates-rhel \

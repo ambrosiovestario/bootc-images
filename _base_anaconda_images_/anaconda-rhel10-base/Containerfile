@@ -37,6 +37,7 @@ RUN set -eu; \
         anaconda-dracut \
         dracut-config-generic \
         dracut-network \
+        audit \
         grub2-common \
         xorriso \
         squashfs-tools \
