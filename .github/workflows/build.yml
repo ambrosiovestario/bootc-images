@@ -998,7 +998,7 @@ jobs:
 
           echo "INSTALLER_IMAGE=$INSTALLER_IMAGE" >> "$GITHUB_ENV"
 
-          podman rm $BASE_IMAGE
+          #podman rm $BASE_IMAGE
 
       - name: Check available disk space
         run: |
@@ -1042,7 +1042,8 @@ jobs:
           if [ -n "${INSTALLER_IMAGE:-}" ]; then
               echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
               echo "Using $IMAGE as --bootc-installer-payload-ref"
-              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+              #BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+              BOOTC_ARGS=(--bootc-ref "ghcr.io/luisarizmendi/bootc-anaconda-rhel10-base:latest-amd64" --bootc-installer-payload-ref "$IMAGE")
           fi
 
           # Note: an earlier version of this step mounted a nested storage.conf
