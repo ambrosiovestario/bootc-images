@@ -631,7 +631,7 @@ jobs:
       DEST_REGISTRY_PASSWORD: "${{ secrets.DEST_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}"
       IMAGE_PREFIX: "${{ needs.setup.outputs.image_prefix }}"  
     container:
-      image: registry.access.redhat.com/ubi10/ubi
+      image: registry.access.redhat.com/ubi9/ubi
       options: --privileged -v /mnt:/mnt
     permissions:
       contents: write
@@ -868,7 +868,7 @@ jobs:
       DEST_REGISTRY_PASSWORD: "${{ secrets.DEST_REGISTRY_PASSWORD || secrets.GITHUB_TOKEN }}"
       IMAGE_PREFIX: "${{ needs.setup.outputs.image_prefix }}"
     container:
-      image: registry.access.redhat.com/ubi10/ubi
+      image: registry.access.redhat.com/ubi9/ubi
       options: --privileged --user root -v /mnt:/mnt -v /var/lib/containers/storage:/var/lib/containers/storage
     permissions:
       contents: write
