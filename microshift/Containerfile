@@ -1,22 +1,21 @@
-#ARG BASE_IMAGE_RELEASE='9'
-#ARG BASE_IMAGE_TAG='9.6'
+ARG BASE_IMAGE_RELEASE='9'
+ARG BASE_IMAGE_TAG='9.6'
 
-ARG BASE_IMAGE_RELEASE='10'
-ARG BASE_IMAGE_TAG='10.2'
+#ARG BASE_IMAGE_RELEASE='10'
+#ARG BASE_IMAGE_TAG='10.2'
 
-ARG USHIFT_VER='4.21'
+#ARG RHEM_RELEASE=1.3
+
+ARG USHIFT_VER='4.22'
 ARG ACM_VER='2.15'
 ########################################
 FROM registry.redhat.io/rhel${BASE_IMAGE_RELEASE}/rhel-bootc:${BASE_IMAGE_TAG}
 
 ARG ACM_VER
 ARG USHIFT_VER
-
-##ARG BASE_IMAGE_RELEASE='9'
-##ARG RHEM_RELEASE='1.1'
-#
 ARG BASE_IMAGE_RELEASE
-#ARG RHEM_RELEASE='1.3'
+#ARG RHEM_RELEASE
+
 #
 ################################################################################
 #Red Hat Edge Manager
