@@ -1055,7 +1055,7 @@ jobs:
           # The real fix is to not embed the payload at all (see the
           # bootc-generic-iso branch above).
 
-          echo "Running:"
+          echo "Running on $(uname -m):"
           echo "podman run \
             --rm \
             --privileged \
