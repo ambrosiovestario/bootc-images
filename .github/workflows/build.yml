@@ -998,7 +998,7 @@ jobs:
 
           echo "INSTALLER_IMAGE=$INSTALLER_IMAGE" >> "$GITHUB_ENV"
 
-          podman rm $BASE_IMAGE
+          podman rmi $BASE_IMAGE
 
       - name: Check available disk space
         run: |
