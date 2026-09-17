@@ -105,4 +105,3 @@ RUN systemctl enable copy-embedded-images.service && \
     systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
 
     
-    
