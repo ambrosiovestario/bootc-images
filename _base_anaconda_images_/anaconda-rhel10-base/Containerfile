@@ -2,6 +2,9 @@ FROM quay.io/fedora/fedora-bootc:rawhide
 
 ARG TARGETARCH
 
+
+RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
+
 RUN set -eu; \
     case "$TARGETARCH" in \
       arm64) GRUB_PKGS="grub2-efi-aa64-cdboot shim-aa64"; DEVNAME_PKGS="prefixdevname" ;; \
@@ -13,11 +16,41 @@ RUN set -eu; \
     anaconda-dracut \
     dracut-config-generic \
     dracut-network \
+    grub2-common \
     net-tools \
     plymouth \
     default-fonts-core-sans \
     default-fonts-other-sans \
-    google-noto-sans-cjk-fonts
+    google-noto-sans-cjk-fonts \
+    python3-mako \
+    audit \
+    $DEVNAME_PKGS \
+    $GRUB_PKGS && \
+    dnf reinstall -y grub2-common $GRUB_PKGS && \
+    dnf clean all
+
+# Verify the reinstall above actually produced the required files. If
+# this still fails, some other package is also pre-baked-but-stripped in
+# the base image the same way shim-x64 was (dnf reinstall -y <pkg> is the
+# fix for whichever one it turns out to be); the rpm -q listing below
+# shows exactly which package should own the missing file.
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      arm64) SUFFIX="aa64" ;; \
+      *) SUFFIX="x64" ;; \
+    esac; \
+    for f in "shim${SUFFIX}.efi" "mm${SUFFIX}.efi" "gcd${SUFFIX}.efi"; do \
+        if [ ! -f "/boot/efi/EFI/redhat/$f" ]; then \
+            echo "ERROR: expected /boot/efi/EFI/redhat/$f after installing/reinstalling shim/grub2-efi packages, but it is missing."; \
+            echo "--- contents of /boot/efi/EFI ---"; \
+            find /boot/efi/EFI 2>&1 || echo "(/boot/efi/EFI does not exist)"; \
+            echo "--- which package should own it ---"; \
+            rpm -qf "/boot/efi/EFI/redhat/$f" 2>&1 || true; \
+            exit 1; \
+        fi; \
+    done; \
+    echo "Confirmed shim/grub2 EFI binaries present under /boot/efi/EFI/redhat/"
+
 
 # these are necessary build tools. if you use a separate build container then
 # these tools should be installed there
@@ -27,7 +60,6 @@ RUN dnf install -qy \
 
 RUN dnf clean all
 
-RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
 
 # ---
 
@@ -35,6 +67,20 @@ RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
 
 RUN mkdir -p /usr/lib/image-builder/bootc
 
+COPY <<EOT /usr/lib/image-builder/bootc/iso.yaml
+label: "Fedora-bootc-Installer"
+grub2:
+  entries:
+    - name: "Install Fedora (bootc)"
+      linux: "/images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-bootc-Installer console=tty0 inst.graphical selinux=0 rhgb quiet"
+      initrd: "/images/pxeboot/initrd.img"
+EOT
+
+# some configuration for anaconda
+
+COPY <<EOT /usr/share/anaconda/interactive-defaults.ks
+bootc --source-imgref registry:quay.io/fedora/fedora-bootc:rawhide --target-imgref quay.io/fedora/fedora-bootc:rawhide
+EOT
 
 # ---
 
