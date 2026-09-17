@@ -1,13 +1,19 @@
 FROM quay.io/fedora/fedora-bootc:rawhide
 
-RUN dnf install -qy \
+ARG TARGETARCH
+
+RUN set -eu; \
+    case "$TARGETARCH" in \
+      arm64) GRUB_PKGS="grub2-efi-aa64-cdboot shim-aa64"; DEVNAME_PKGS="prefixdevname" ;; \
+      *) GRUB_PKGS="grub2-efi-x64-cdboot grub2-pc-modules shim-x64"; DEVNAME_PKGS="biosdevname prefixdevname" ;; \
+    esac; \
+    dnf install -qy \
     anaconda \
     anaconda-install-img-deps \
     anaconda-dracut \
     dracut-config-generic \
     dracut-network \
     net-tools \
-    grub2-efi-x64-cdboot \
     plymouth \
     default-fonts-core-sans \
     default-fonts-other-sans \
