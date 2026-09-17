@@ -3,6 +3,8 @@ FROM quay.io/fedora/fedora-bootc:rawhide
 ARG TARGETARCH
 
 
+RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
+
 RUN set -eu; \
     case "$TARGETARCH" in \
       arm64) GRUB_PKGS="grub2-efi-aa64-cdboot shim-aa64"; DEVNAME_PKGS="prefixdevname" ;; \
@@ -15,7 +17,6 @@ RUN set -eu; \
     dracut-config-generic \
     dracut-network \
     net-tools \
-    grub2-efi-x64-cdboot \
     plymouth \
     default-fonts-core-sans \
     default-fonts-other-sans \
@@ -56,7 +57,6 @@ RUN dnf install -qy \
 
 RUN dnf clean all
 
-RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
 
 # ---
 
