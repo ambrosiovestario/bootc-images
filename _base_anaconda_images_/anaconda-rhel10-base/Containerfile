@@ -1,31 +1,50 @@
-FROM quay.io/fedora/fedora-bootc:rawhide
+## Shared Anaconda installer environment for RHEL 10 bootc payloads.
+## Lives under _base_anaconda_images_/ (not a regular app directory) so it
+## reads clearly as build infrastructure rather than something deployed.
+##
+## This image is NOT deployed to any device. It is only ever used as the
+## --bootc-ref (installer environment) when building a bootc-generic-iso,
+## paired with an app's own image passed as --bootc-installer-payload-ref.
+##
+## Keep this generic: no kickstart, no per-app config. Per-app ISO details
+## (kickstart, grub label/entries) live in <app>/installer/ directories that
+## FROM this image. Rebuild this only when Anaconda/tooling itself needs to
+## change; app teams should not need to touch it.
 
+FROM registry.redhat.io/rhel10/rhel-bootc:10.2
+
+# grub2-efi-x64-cdboot/grub2-pc-modules are x86_64-only (arm64 has no BIOS
+# boot at all, so no grub2-pc-modules equivalent); arm64 uses
+# grub2-efi-aa64-cdboot instead. TARGETARCH is set automatically by
+# buildah/podman from --platform, no --build-arg needed.
 ARG TARGETARCH
 
-
-RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
-
+# shim-x64 (confirmed) and possibly grub2-common/grub2-efi-*-cdboot ship
+# already "installed" in the rhel-bootc base image's RPM database, but
+# bootc's image compose step strips their actual /boot/efi payload (that
+# partition is managed separately by bootupd on a real bootc system, not
+# baked into the container). A plain dnf install is then a no-op for
+# anything already marked installed, so it never re-extracts the missing
+# files. dnf reinstall forces it.
 RUN set -eu; \
     case "$TARGETARCH" in \
       arm64) GRUB_PKGS="grub2-efi-aa64-cdboot shim-aa64"; DEVNAME_PKGS="prefixdevname" ;; \
       *) GRUB_PKGS="grub2-efi-x64-cdboot grub2-pc-modules shim-x64"; DEVNAME_PKGS="biosdevname prefixdevname" ;; \
     esac; \
-    dnf install -qy \
-    anaconda \
-    anaconda-install-img-deps \
-    anaconda-dracut \
-    dracut-config-generic \
-    dracut-network \
-    grub2-common \
-    net-tools \
-    plymouth \
-    default-fonts-core-sans \
-    default-fonts-other-sans \
-    google-noto-sans-cjk-fonts \
-    python3-mako \
-    audit \
-    $DEVNAME_PKGS \
-    $GRUB_PKGS && \
+    dnf install -y \
+        anaconda \
+        anaconda-install-env-deps \
+        anaconda-dracut \
+        dracut-config-generic \
+        dracut-network \
+        audit \
+        grub2-common \
+        xorriso \
+        squashfs-tools \
+        lorax-templates-rhel \
+        python3-mako \
+        $DEVNAME_PKGS \
+        $GRUB_PKGS && \
     dnf reinstall -y grub2-common $GRUB_PKGS && \
     dnf clean all
 
@@ -52,72 +71,34 @@ RUN set -eu; \
     echo "Confirmed shim/grub2 EFI binaries present under /boot/efi/EFI/redhat/"
 
 
-# these are necessary build tools. if you use a separate build container then
-# these tools should be installed there
-RUN dnf install -qy \
-    xorrisofs \
-    squashfs-tools
-
-RUN dnf clean all
-
-
-# ---
-
-# some configuration for our ISO
-
-RUN mkdir -p /usr/lib/image-builder/bootc
-
-COPY <<EOT /usr/lib/image-builder/bootc/iso.yaml
-label: "Fedora-bootc-Installer"
-grub2:
-  entries:
-    - name: "Install Fedora (bootc)"
-      linux: "/images/pxeboot/vmlinuz inst.stage2=hd:LABEL=Fedora-bootc-Installer console=tty0 inst.graphical selinux=0 rhgb quiet"
-      initrd: "/images/pxeboot/initrd.img"
-EOT
-
-# some configuration for anaconda
-
-COPY <<EOT /usr/share/anaconda/interactive-defaults.ks
-bootc --source-imgref registry:quay.io/fedora/fedora-bootc:rawhide --target-imgref quay.io/fedora/fedora-bootc:rawhide
-EOT
-
-# ---
-
-# these things are normally performed by `lorax` to make `anaconda` work; this is the
-# bare minimum to get things to work
-
-RUN echo "install:x:0:0:root:/root:/usr/libexec/anaconda/run-anaconda" >> /etc/passwd && \
-    echo "install::14438:0:99999:7:::" >> /etc/shadow && \
-    passwd -d root
-
-RUN mv /usr/share/anaconda/list-harddrives-stub /usr/bin/list-harddrives && \
+# Let Anaconda run as an installer environment instead of a normal login.
+#RUN echo "install:x:0:0:root:/root:/usr/libexec/anaconda/run-anaconda" >> /etc/passwd && \
+#    echo "install::14438:0:99999:7:::" >> /etc/shadow && \
+RUN passwd -d root && \
     mv /etc/yum.repos.d /etc/anaconda.repos.d && \
-    ln -s /lib/systemd/system/anaconda.target /etc/systemd/system/default.target && \
-    rm -v /usr/lib/systemd/system-generators/systemd-gpt-auto-generator
+    ln -sf /usr/lib/systemd/system/anaconda.target /etc/systemd/system/default.target && \
+    rm -f /usr/lib/systemd/system-generators/systemd-gpt-auto-generator && \
+    ln -sf /usr/lib/systemd/system/anaconda-shell@.service /usr/lib/systemd/system/autovt@.service
 
-RUN ln -s /usr/lib/systemd/system/anaconda-shell@.service /usr/lib/systemd/system/autovt@.service
+RUN mkdir -p "$(realpath /root)" && \
+    mkdir -p "$(realpath /mnt)"
 
-RUN mkdir /usr/lib/systemd/logind.conf.d
-COPY <<EOT /usr/lib/systemd/logind.conf.d/anaconda-shell.conf
-[Login]
-ReserveVT=2
-EOT
-
-RUN mkdir "$(realpath /root)" && \
-    kernel=$(kernel-install list --json pretty | jq -r '.[] | select(.has_kernel == true) | .version') && \
-    DRACUT_NO_XATTR=1 dracut --force -v --zstd --reproducible --no-hostonly \
+# Rebuild the initramfs with the anaconda dracut module so the kernel we
+# ship can actually boot into the installer.
+# Using /usr/lib/modules directly instead of kernel-install list --json:
+# that subcommand isn't supported on RHEL 9's older kernel-install (fails
+# with "unknown command 'list'"), and on failure the command substitution
+# would silently resolve to an empty string, making dracut fall back to
+# the HOST runner's kernel instead of anything inside the container.
+# /usr/lib/modules works the same way on every RHEL/Fedora version.
+RUN set -eu; \
+    KVER=$(basename "$(find /usr/lib/modules -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)"); \
+    if [ -z "$KVER" ] || [ ! -f "/usr/lib/modules/${KVER}/vmlinuz" ]; then \
+        echo "ERROR: could not find an installed kernel under /usr/lib/modules"; \
+        ls -la /usr/lib/modules 2>&1 || echo "(/usr/lib/modules does not exist)"; \
+        exit 1; \
+    fi; \
+    echo "Using kernel version: $KVER"; \
+    DRACUT_NO_XATTR=1 dracut --force -v --reproducible --no-hostonly \
         --add "anaconda" \
-        "/usr/lib/modules/${kernel}/initramfs.img" "${kernel}"
-
-RUN mkdir /etc/systemd/user/pipewire.service.d/
-COPY <<EOT /etc/systemd/user/pipewire.service.d/allowroot.conf
-[Unit]
-ConditionUser=
-EOT
-
-RUN mkdir /etc/systemd/user/pipewire.socket.d/
-COPY <<EOT /etc/systemd/user/pipewire.socket.d/allowroot.conf
-[Unit]
-ConditionUser=
-EOT
+        "/usr/lib/modules/${KVER}/initramfs.img" "${KVER}"
