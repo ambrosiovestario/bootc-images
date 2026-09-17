@@ -16,11 +16,15 @@ RUN set -eu; \
     anaconda-dracut \
     dracut-config-generic \
     dracut-network \
+    grub2-common \
     net-tools \
     plymouth \
     default-fonts-core-sans \
     default-fonts-other-sans \
-    google-noto-sans-cjk-fonts\
+    google-noto-sans-cjk-fonts \
+    lorax-templates-rhel \
+    python3-mako \
+    audit \
     $DEVNAME_PKGS \
     $GRUB_PKGS && \
     dnf reinstall -y grub2-common $GRUB_PKGS && \
