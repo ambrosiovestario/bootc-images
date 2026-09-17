@@ -17,8 +17,10 @@ RUN set -eu; \
     plymouth \
     default-fonts-core-sans \
     default-fonts-other-sans \
-    google-noto-sans-cjk-fonts
-
+    google-noto-sans-cjk-fonts \
+    $DEVNAME_PKGS \
+    $GRUB_PKGS
+    
 # these are necessary build tools. if you use a separate build container then
 # these tools should be installed there
 RUN dnf install -qy \
@@ -31,10 +33,7 @@ RUN mkdir -p /boot/efi && cp -ra /usr/lib/efi/*/*/EFI /boot/efi
 
 # ---
 
-# some configuration for our ISO
-
 RUN mkdir -p /usr/lib/image-builder/bootc
-
 
 # ---
 

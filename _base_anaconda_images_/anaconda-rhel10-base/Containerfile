@@ -10,7 +10,6 @@
 ## (kickstart, grub label/entries) live in <app>/installer/ directories that
 ## FROM this image. Rebuild this only when Anaconda/tooling itself needs to
 ## change; app teams should not need to touch it.
-
 FROM registry.redhat.io/rhel10/rhel-bootc:10.2
 
 # grub2-efi-x64-cdboot/grub2-pc-modules are x86_64-only (arm64 has no BIOS
