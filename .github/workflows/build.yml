@@ -14,7 +14,7 @@ on:
       installer_base:
         description: 'Default installer_base for bootc-generic-iso/bootc-installer when a directory has no .buildconfig (name of an image under _base_anaconda_images_/<name>/)'
         required: false
-        default: 'anaconda-rhel10-base'
+        default: 'anaconda-base'
       base_path:
         description: 'Base path for image directories (e.g., "devices" or leave empty for root)'
         required: false
@@ -95,7 +95,7 @@ jobs:
             FORMATS="bootc-generic-iso"
             BASE_PATH="${{ vars.BASE_PATH || '' }}"
             IMAGE_PREFIX="${{ vars.IMAGE_PREFIX || 'bootc' }}"
-            DEFAULT_INSTALLER_BASE="${{ vars.INSTALLER_BASE || 'anaconda-rhel10-base' }}"
+            DEFAULT_INSTALLER_BASE="${{ vars.INSTALLER_BASE || 'anaconda-base' }}"
           fi
 
           ORIGINAL_FORMATS="$FORMATS"
@@ -234,7 +234,7 @@ jobs:
           # ISO-style bootc formats (bootc-installer, bootc-generic-iso) need a
           # separate Anaconda installer image. The value here is the name of
           # another top-level directory that builds that shared base image
-          # (Anaconda + tooling, no kickstart, e.g. "anaconda-rhel10-base").
+          # (Anaconda + tooling, no kickstart, e.g. "anaconda-base").
           # This directory's own ./installer/Containerfile is built locally on
           # top of that base (see the build-artifacts job) to add its
           # kickstart and iso.yaml. The local result is used as --bootc-ref,
@@ -324,7 +324,7 @@ jobs:
 
           # _base_anaconda_images_ is a container directory, not an app: the
           # shared Anaconda installer base images it holds live one level
-          # deeper (e.g. _base_anaconda_images_/anaconda-rhel10-base/), so it
+          # deeper (e.g. _base_anaconda_images_/anaconda-base/), so it
           # needs its own two-levels-deep scan alongside the normal
           # one-level app detection above.
           ANACONDA_BASE_DIR="${BASE_PATH:+$BASE_PATH/}_base_anaconda_images_"
@@ -576,7 +576,7 @@ jobs:
                     if [ "$ARTIFACT_FORMAT" = "bootc-installer" ] || [ "$ARTIFACT_FORMAT" = "bootc-generic-iso" ]; then
                       ENTRY_INSTALLER_BASE="${INSTALLER_BASE:-$DEFAULT_INSTALLER_BASE}"
                       if [ -z "$ENTRY_INSTALLER_BASE" ]; then
-                        echo "::error::Directory $DIR requests artifact format '$ARTIFACT_FORMAT' but has no 'installer_base:' key in its .buildconfig, and no default installer_base is configured (workflow_dispatch input, or vars.INSTALLER_BASE). Set one to the name of an image built under _base_anaconda_images_/<name>/ (see _base_anaconda_images_/anaconda-rhel10-base/ for an example)."
+                        echo "::error::Directory $DIR requests artifact format '$ARTIFACT_FORMAT' but has no 'installer_base:' key in its .buildconfig, and no default installer_base is configured (workflow_dispatch input, or vars.INSTALLER_BASE). Set one to the name of an image built under _base_anaconda_images_/<name>/ (see _base_anaconda_images_/anaconda-base/ for an example)."
                         exit 1
                       fi
                       if [ ! -f "$DIR/installer/Containerfile" ]; then
