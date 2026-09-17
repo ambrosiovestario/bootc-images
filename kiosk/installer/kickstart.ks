@@ -5,21 +5,34 @@ timezone UTC --utc
 
 %pre
 #!/bin/bash
+
+exec > /tmp/ks-pre.log 2>&1
+set -x
+
 best=""
 best_size=0
+
 while read -r name size type rm; do
     [ "$type" = "disk" ] || continue
     [ "$rm" = "0" ] || continue
+
     if [ "$size" -gt "$best_size" ]; then
         best_size=$size
         best=$name
     fi
 done < <(lsblk -dbn -o NAME,SIZE,TYPE,RM)
+
 if [ -z "$best" ]; then
     echo "" > /tmp/part-include.ks
 else
     echo "ignoredisk --only-use=$best" > /tmp/part-include.ks
 fi
+
+echo "Selected disk: $best"
+echo "Selected size: $best_size"
+echo "Generated partition include:"
+cat /tmp/part-include.ks
+
 %end
 
 %include /tmp/part-include.ks

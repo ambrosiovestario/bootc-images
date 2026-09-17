@@ -1,4 +1,4 @@
-label: "BOOTC-Installer"
+label: "RHEL-BOOTC-Installer"
 grub2:
   entries:
     - name: "Install RHEL (bootc)"
