@@ -51,7 +51,7 @@ RUN mv /usr/share/anaconda/list-harddrives-stub /usr/bin/list-harddrives && \
 
 RUN ln -s /usr/lib/systemd/system/anaconda-shell@.service /usr/lib/systemd/system/autovt@.service
 
-RUN mkdir /usr/lib/systemd/logind.conf.d
+RUN mkdir -p /usr/lib/systemd/logind.conf.d
 COPY <<EOT /usr/lib/systemd/logind.conf.d/anaconda-shell.conf
 [Login]
 ReserveVT=2
