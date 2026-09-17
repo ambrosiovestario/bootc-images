@@ -1042,7 +1042,7 @@ jobs:
           if [ -n "${INSTALLER_IMAGE:-}" ]; then
               echo "Using installer image as --bootc-ref: $INSTALLER_IMAGE"
               echo "Using $IMAGE as --bootc-installer-payload-ref"
-              BOOTC_ARGS=(--bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
+              BOOTC_ARGS=(--bootc-default-fs xfs --bootc-ref "$INSTALLER_IMAGE" --bootc-installer-payload-ref "$IMAGE")
           fi
 
           # Note: an earlier version of this step mounted a nested storage.conf
